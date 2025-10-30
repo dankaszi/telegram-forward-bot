@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Telegram Message Forwarder
 
 Ez a program automatikusan továbbítja az üzeneteket egy Telegram csoportból/chatből egy másikba a saját Telegram fiókod használatával.
@@ -60,3 +61,6 @@ Ha nem működik az üzenet-továbbítás:
 2. Ellenőrizd, hogy van-e írási jogosultságod a cél csoportban
 3. Győződj meg róla, hogy a chat ID-k helyesek
 4. Futtasd újra a `login.py`-t ha lejárt a session
+=======
+# telegram-forward-bot
+>>>>>>> 66fe948e8eac2bd22df0158276dcb62854edabea
