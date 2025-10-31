@@ -41,8 +41,8 @@ A következő környezeti változókra van szükség (már be vannak állítva a
 - `TELEGRAM_API_HASH`: Telegram API hash
 - `PHONE_NUMBER`: Telefonszámod (nemzetközi formátumban, pl. +36701234567)
 - `SOURCE_CHAT_ID`: Forrás chat azonosítója(k) (ahonnan továbbítasz)
-  - **Egy forrás csoport**: Csak add meg a chat ID-t (pl. `-1001713595325`)
-  - **Több forrás csoport**: Vesszővel elválasztva add meg őket (pl. `-1001713595325,-1002104945722,-1003456789012`)
+  - **Egy forrás csoport**: Csak add meg a chat ID-t (pl. `-1001111111111`)
+  - **Több forrás csoport**: Vesszővel elválasztva add meg őket (pl. `-1001111111111,-1001111111111,-1001111111111`)
 - `TARGET_CHAT_ID`: Cél chat azonosítója (ahova továbbítasz)
 
 ## Megjegyzések
@@ -62,5 +62,4 @@ Ha nem működik az üzenet-továbbítás:
 3. Győződj meg róla, hogy a chat ID-k helyesek
 4. Futtasd újra a `login.py`-t ha lejárt a session
 =======
-# telegram-forward-bot
->>>>>>> 66fe948e8eac2bd22df0158276dcb62854edabea
+
