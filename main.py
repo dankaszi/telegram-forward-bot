@@ -27,6 +27,15 @@ keep_alive()
 # Betöltjük az .env változókat
 load_dotenv()
 
+import base64
+
+# Decode session from environment if available
+if os.getenv("SESSION_B64"):
+    with open("user_session.session", "wb") as f:
+        f.write(base64.b64decode(os.getenv("SESSION_B64")))
+    print("🔓 Session file regenerated from environment.")
+
+
 # 🔧 Alapbeállítások környezeti változókból
 api_id = os.getenv('TELEGRAM_API_ID')
 api_hash = os.getenv('TELEGRAM_API_HASH')
