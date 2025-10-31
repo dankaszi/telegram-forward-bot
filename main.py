@@ -5,6 +5,20 @@ from dotenv import load_dotenv
 from flask import Flask
 from threading import Thread
 
+import base64
+
+# --- Session visszaállítása Render környezetből ---
+if os.getenv("SESSION_B64"):
+    try:
+        with open("user_session.session", "wb") as f:
+            f.write(base64.b64decode(os.getenv("SESSION_B64")))
+        print("🔓 Session file regenerated from environment.")
+    except Exception as e:
+        print(f"⚠️ Session regeneration failed: {e}")
+else:
+    print("ℹ️ No SESSION_B64 found in environment, proceeding normally.")
+
+
 # Flask szerver (Render miatt, de lokálisan sem zavar)
 app = Flask(__name__)
 
@@ -26,15 +40,6 @@ keep_alive()
 
 # Betöltjük az .env változókat
 load_dotenv()
-
-import base64
-
-# Decode session from environment if available
-if os.getenv("SESSION_B64"):
-    with open("user_session.session", "wb") as f:
-        f.write(base64.b64decode(os.getenv("SESSION_B64")))
-    print("🔓 Session file regenerated from environment.")
-
 
 # 🔧 Alapbeállítások környezeti változókból
 api_id = os.getenv('TELEGRAM_API_ID')
