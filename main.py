@@ -1,30 +1,18 @@
 import os
 import asyncio
+import base64
+import logging
 from telethon import TelegramClient, events
 from dotenv import load_dotenv
 from flask import Flask
 from threading import Thread
 
-import base64
-
-# --- Session visszaállítása Render környezetből ---
-if os.getenv("SESSION_B64"):
-    try:
-        with open("user_session.session", "wb") as f:
-            f.write(base64.b64decode(os.getenv("SESSION_B64")))
-        print("🔓 Session file regenerated from environment.")
-    except Exception as e:
-        print(f"⚠️ Session regeneration failed: {e}")
-else:
-    print("ℹ️ No SESSION_B64 found in environment, proceeding normally.")
-
-
-# Flask szerver (Render miatt, de lokálisan sem zavar)
+# --- Flask keep-alive szerver (Render free verzióhoz) ---
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "✅ Telegram Forward Bot aktív (user account módban)"
+    return "✅ Telegram Forward Bot fut rendben!"
 
 def run_web():
     port = int(os.environ.get('PORT', 8080))
@@ -35,78 +23,129 @@ def keep_alive():
     t.daemon = True
     t.start()
 
-# Indítjuk a webservert (Render vagy lokál teszt miatt)
+# Keep-alive aktiválása
 keep_alive()
 
-# Betöltjük az .env változókat
+# --- .env beolvasás (helyi futtatáshoz) ---
 load_dotenv()
 
-# 🔧 Alapbeállítások környezeti változókból
+# --- Logolás beállítása ---
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.FileHandler("forward_log.txt", encoding="utf-8"),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
+# --- Session visszaállítása Render környezetből ---
+if os.getenv("SESSION_B64"):
+    try:
+        with open("user_session.session", "wb") as f:
+            f.write(base64.b64decode(os.getenv("SESSION_B64")))
+        logger.info("🔓 Session file regenerated from environment.")
+    except Exception as e:
+        logger.error(f"⚠️ Session regeneration failed: {e}")
+else:
+    logger.warning("ℹ️ No SESSION_B64 found in environment, proceeding normally.")
+
+# --- Környezeti változók betöltése ---
 api_id = os.getenv('TELEGRAM_API_ID')
 api_hash = os.getenv('TELEGRAM_API_HASH')
 phone_number = os.getenv('PHONE_NUMBER')
 source_chat_ids_str = os.getenv('SOURCE_CHAT_ID', '0')
 target_chat_id = int(os.getenv('TARGET_CHAT_ID', '0'))
 
-# Több forrás csoport támogatása
-source_chat_ids = [int(id.strip()) for id in source_chat_ids_str.split(',') if id.strip()]
-
-# Ellenőrizzük, hogy minden megvan-e
-missing = [var for var, val in [
+# Ellenőrzés
+missing = []
+for var_name, var_value in [
     ("TELEGRAM_API_ID", api_id),
     ("TELEGRAM_API_HASH", api_hash),
     ("PHONE_NUMBER", phone_number),
     ("SOURCE_CHAT_ID", source_chat_ids_str),
     ("TARGET_CHAT_ID", target_chat_id)
-] if not val]
-
+]:
+    if not var_value:
+        missing.append(var_name)
 if missing:
     raise ValueError(f"❌ Hiányzó environment változók: {', '.join(missing)}")
 
-# 📱 User account mód (nem bot token)
-import asyncio
-asyncio.set_event_loop(asyncio.new_event_loop())
+# --- Forrás chat ID-k feldolgozása ---
+source_chat_ids = []
+for id_str in source_chat_ids_str.split(','):
+    try:
+        source_chat_ids.append(int(id_str.strip()))
+    except ValueError:
+        logger.warning(f"⚠️ Érvénytelen SOURCE_CHAT_ID: {id_str}")
+
+# --- Telegram kliens létrehozása (User Account) ---
 client = TelegramClient('user_session', int(api_id), api_hash)
 
 chat_names = {}
 
 async def startup():
-    await client.connect()
-    if not await client.is_user_authorized():
-        print("📱 Bejelentkezés szükséges...")
-        await client.start(phone=lambda: phone_number)
-    else:
-        await client.start()
-
-    me = await client.get_me()
-    print(f"✅ Bejelentkezve mint: {me.first_name} ({me.username or 'nincs username'})")
-    print(f"📱 Telefonszám: {me.phone}")
-    print(f"📥 Forrás chat-ek száma: {len(source_chat_ids)}")
-    print(f"📤 Cél chat ID: {target_chat_id}")
-
-    for src in source_chat_ids:
-        try:
-            ent = await client.get_entity(src)
-            chat_names[src] = getattr(ent, 'title', 'Privát chat')
-            print(f"✅ Forrás chat elérhető: {chat_names[src]} (ID: {src})")
-        except Exception as e:
-            print(f"❌ Hiba a forrás chatnál ({src}): {e}")
-
-@client.on(events.NewMessage(chats=source_chat_ids))
-async def forward_message(event):
     try:
-        src_name = chat_names.get(event.chat_id, str(event.chat_id))
-        print(f"📨 Új üzenet érkezett: {src_name} (ID: {event.id})")
-        await event.forward_to(target_chat_id)
-        print(f"✅ Üzenet továbbítva: {event.id}")
+        if not await client.is_user_authorized():
+            logger.info("📱 Bejelentkezés szükséges...")
+            await client.start(phone=lambda: phone_number)
+        else:
+            await client.connect()
+
+        me = await client.get_me()
+        logger.info(f"✅ Bejelentkezve mint: {me.first_name} (@{me.username if me.username else 'nincs username'})")
+        logger.info(f"📥 Forrás chat-ek száma: {len(source_chat_ids)}")
+        logger.info(f"📤 Cél chat ID: {target_chat_id}")
+
+        valid_source_ids = []
+        for source_id in source_chat_ids:
+            try:
+                source_chat = await client.get_entity(source_id)
+                chat_names[source_id] = getattr(source_chat, 'title', 'Private chat')
+                valid_source_ids.append(source_id)
+                logger.info(f"✅ Forrás chat elérhető: {chat_names[source_id]} (ID: {source_id})")
+            except Exception as e:
+                logger.warning(f"⚠️ Kihagyva: Forrás chat nem elérhető ({source_id}): {e}")
+
+        # --- Üzenetek (szöveg / egyképes / fájlos posztok) ---
+        @client.on(events.NewMessage(chats=valid_source_ids))
+        async def forward_message(event):
+            try:
+                source_name = chat_names.get(event.chat_id, f"Chat {event.chat_id}")
+                logger.info(f"📨 Új üzenet a '{source_name}' csoportból (ID: {event.id})")
+                await event.forward_to(target_chat_id)
+                logger.info(f"✅ Üzenet továbbítva: {event.id}")
+            except Exception as e:
+                logger.error(f"❌ Továbbítási hiba (üzenet {event.id}): {e}")
+
+        # --- Albumok (többképes / többmédiás posztok) ---
+        @client.on(events.Album(chats=valid_source_ids))
+        async def forward_album(event):
+            try:
+                source_name = chat_names.get(event.chat_id, f"Chat {event.chat_id}")
+                logger.info(f"🖼️ Új album a '{source_name}' csoportból ({len(event.messages)} elem)")
+
+                messages = event.messages
+                caption = messages[0].message or ""
+
+                await client.send_file(
+                    target_chat_id,
+                    [msg.media for msg in messages if msg.media],
+                    caption=caption
+                )
+                logger.info(f"✅ Album továbbítva ({len(messages)} elem)")
+            except Exception as e:
+                logger.error(f"❌ Album továbbítási hiba: {e}")
+
+        logger.info("🚀 Bot fut és figyeli az üzeneteket...")
+        await client.run_until_disconnected()
+
     except Exception as e:
-        print(f"❌ Továbbítási hiba: {e}")
+        logger.error(f"❌ Inicializálási hiba: {e}")
+        raise
 
-async def main():
-    await startup()
-    print("\n🚀 A bot fut és figyeli az üzeneteket...\n")
-    await client.run_until_disconnected()
-
-if __name__ == "__main__":
+# --- Futtatás ---
+if __name__ == '__main__':
     with client:
-        client.loop.run_until_complete(main())
+        client.loop.run_until_complete(startup())
